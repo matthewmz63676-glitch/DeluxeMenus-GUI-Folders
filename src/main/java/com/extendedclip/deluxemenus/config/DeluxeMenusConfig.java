@@ -61,7 +61,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -189,13 +188,18 @@ public class DeluxeMenusConfig {
         for (String name : exampleMenus) {
             File menuFile = new File(menuDirectory.getPath(), name + ".yml");
             try {
-                menuFile.createNewFile();
+                if (!menuFile.createNewFile()) {
+                    continue;
+                }
             } catch (IOException e) {
                 plugin.printStacktrace("Failed to create example menus!", e);
                 continue;
             }
             saveResourceToFile(name + ".yml", menuFile);
-            c.set("gui_menus." + name + ".file", menuFile.getName());
+        }
+
+        if (!c.isConfigurationSection("gui_menus")) {
+            c.createSection("gui_menus");
         }
         plugin.saveConfig();
         plugin.reloadConfig();
@@ -274,23 +278,9 @@ public class DeluxeMenusConfig {
             return false;
         }
 
-        FileConfiguration c = plugin.getConfig();
-
-        if (c.isConfigurationSection("gui_menus")) {
-            final Set<String> keys = c.getConfigurationSection("gui_menus").getKeys(false);
-            if (keys.contains(menu)) {
-                if (c.contains("gui_menus." + menu + ".file")) {
-                    return loadMenuFromFile(menu);
-                }
-
-                loadMenu(c, menu, true, "config");
-                return true;
-            }
-        }
-
         return findAutomaticMenu(menu)
                 .map(file -> loadMenuFromFile(menu, file.file().toFile()))
-                .orElse(false);
+                .orElseGet(() -> loadLegacyConfigMenu(menu));
     }
 
     public int loadGUIMenus() {
@@ -298,56 +288,19 @@ public class DeluxeMenusConfig {
             return 0;
         }
 
-        FileConfiguration c = plugin.getConfig();
-        final Set<String> keys = new HashSet<>();
-        final Set<Path> explicitlyConfiguredFiles = new HashSet<>();
-
-        if (c.isConfigurationSection("gui_menus")) {
-            keys.addAll(c.getConfigurationSection("gui_menus").getKeys(false));
-
-            for (String key : keys) {
-                if (c.contains("gui_menus." + key + ".file")) {
-                    final String fileName = c.getString("gui_menus." + key + ".file");
-                    final File file = resolveMenuFile(fileName);
-                    if (file != null) {
-                        explicitlyConfiguredFiles.add(file.toPath().toAbsolutePath().normalize());
-                    }
-                    loadMenuFromFile(key);
-                } else {
-                    loadMenu(c, key, true, "config");
-                }
-            }
-        }
-
         for (MenuFileDiscovery.DiscoveredMenuFile discoveredFile : findAutomaticMenus()) {
-            if (explicitlyConfiguredFiles.contains(discoveredFile.file())) {
-                continue;
-            }
-
-            if (Menu.getMenuByName(discoveredFile.menuName()).isPresent()) {
-                plugin.debug(
-                        DebugLevel.HIGH,
-                        Level.WARNING,
-                        "Skipping automatically discovered menu: " + discoveredFile.menuName(),
-                        "A menu with that name is already configured."
-                );
-                continue;
-            }
-
             loadMenuFromFile(discoveredFile.menuName(), discoveredFile.file().toFile());
         }
+
+        loadLegacyConfigMenus();
 
         return Menu.getLoadedMenuSize();
     }
 
     public boolean loadMenuFromFile(String menuName) {
-        String fileName = plugin.getConfig().getString("gui_menus." + menuName + ".file");
-        final File file = resolveMenuFile(fileName);
-        if (file == null) {
-            return false;
-        }
-
-        return loadMenuFromFile(menuName, file);
+        return findAutomaticMenu(menuName)
+                .map(file -> loadMenuFromFile(menuName, file.file().toFile()))
+                .orElse(false);
     }
 
     private boolean loadMenuFromFile(final String menuName, final File f) {
@@ -359,22 +312,8 @@ public class DeluxeMenusConfig {
         }
 
         if (!f.exists()) {
-            plugin.debug(DebugLevel.HIGHEST, Level.INFO, f.getName() + " does not exist!");
-
-            try {
-                File folder = f.getParentFile();
-                if (!folder.exists()) folder.mkdirs();
-
-                f.createNewFile();
-                if (!saveResourceToFile("default_menu.yml", f)) {
-                    plugin.debug(DebugLevel.HIGHEST, Level.WARNING, "Failed to create a default menu file for menu: " + menuName, "Skipping loading menu: " + menuName);
-                    return false;
-                }
-                plugin.debug(DebugLevel.HIGHEST, Level.INFO, f.getName() + " created! Add your menu options to this file and use /dm reload to load it!");
-            } catch (IOException e) {
-                plugin.debug(DebugLevel.HIGHEST, Level.SEVERE, "Could not create menu file: plugins" + separator + "DeluxeMenus" + separator + "gui_menus" + separator + fileName);
-                return false;
-            }
+            plugin.debug(DebugLevel.HIGH, Level.INFO, "Menu file disappeared before it could be loaded: " + fileName);
+            return false;
         }
 
         FileConfiguration cfg = checkConfig(f);
@@ -419,26 +358,6 @@ public class DeluxeMenusConfig {
         }
     }
 
-    private File resolveMenuFile(final String fileName) {
-        if (fileName == null || fileName.isBlank()) {
-            return null;
-        }
-
-        final Path root = menuDirectory.toPath().toAbsolutePath().normalize();
-        final Path candidate = root.resolve(fileName).normalize();
-        if (!candidate.startsWith(root)) {
-            plugin.debug(
-                    DebugLevel.HIGHEST,
-                    Level.SEVERE,
-                    "Menu file path escapes the gui_menus directory: " + fileName,
-                    "Skipping the menu file."
-            );
-            return null;
-        }
-
-        return candidate.toFile();
-    }
-
     private String getRelativeMenuPath(final File file) {
         final Path root = menuDirectory.toPath().toAbsolutePath().normalize();
         final Path candidate = file.toPath().toAbsolutePath().normalize();
@@ -447,6 +366,40 @@ public class DeluxeMenusConfig {
         }
 
         return root.relativize(candidate).toString();
+    }
+
+    private void loadLegacyConfigMenus() {
+        final FileConfiguration config = plugin.getConfig();
+        if (!config.isConfigurationSection("gui_menus")) {
+            return;
+        }
+
+        for (String menuName : config.getConfigurationSection("gui_menus").getKeys(false)) {
+            loadLegacyConfigMenu(menuName);
+        }
+    }
+
+    private boolean loadLegacyConfigMenu(final String menuName) {
+        final FileConfiguration config = plugin.getConfig();
+        final String menuPath = "gui_menus." + menuName;
+        if (!config.isConfigurationSection(menuPath)
+                || config.contains(menuPath + ".file")
+                || !config.contains(menuPath + ".menu_title")) {
+            return false;
+        }
+
+        if (Menu.getMenuByName(menuName).isPresent()) {
+            plugin.debug(
+                    DebugLevel.HIGH,
+                    Level.WARNING,
+                    "Skipping legacy config.yml menu: " + menuName,
+                    "A menu file with that name was discovered in gui_menus."
+            );
+            return false;
+        }
+
+        loadMenu(config, menuName, true, "config");
+        return Menu.getMenuByName(menuName).isPresent();
     }
 
     public void loadMenu(FileConfiguration c, String key, boolean mainConfig, final @NotNull String path) {

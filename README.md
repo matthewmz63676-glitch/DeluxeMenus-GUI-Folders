@@ -29,7 +29,7 @@ DeluxeMenus depends on [PlaceholderAPI](https://www.spigotmc.org/resources/place
 
 ## Automatic GUI menu folders
 
-This fork automatically loads every `.yml` file in `plugins/DeluxeMenus/gui_menus` and its subfolders. You no longer need to add a `name` and `file` entry to `config.yml` for each external menu.
+This fork automatically loads every `.yml` file in `plugins/DeluxeMenus/gui_menus` and its subfolders. `config.yml` is never consulted to decide which external menu files load, so you can remove all per-menu `name` and `file` mappings.
 
 The file path relative to `gui_menus` becomes the menu name:
 
@@ -38,7 +38,7 @@ gui_menus/home.yml              -> home
 gui_menus/admin/tools.yml       -> admin/tools
 ```
 
-Use the menu name with `/dm open`, `[openguimenu]`, or `/dm reload`. Existing `gui_menus` entries and menus defined directly in `config.yml` remain supported. An explicit `config.yml` file mapping takes precedence over automatic discovery of the same file.
+Use the menu name with `/dm open`, `[openguimenu]`, or `/dm reload`. Old `file:` mappings in `config.yml` are ignored for external menus; the contents of `gui_menus` are the source of truth. Legacy menus written directly in `config.yml` continue to work only when there is no discovered menu file with the same name.
 
 ## Contribute
 If you would like to contribute towards DeluxeMenus should you take a look at our [Contributing file][contributing] for the ins and outs on how you can do that and what you need to keep in mind.
