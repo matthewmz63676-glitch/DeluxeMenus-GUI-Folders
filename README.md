@@ -27,6 +27,19 @@ You can create GUI menus that open with custom commands that will show stats or 
 
 DeluxeMenus depends on [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/).
 
+## Automatic GUI menu folders
+
+This fork automatically loads every `.yml` file in `plugins/DeluxeMenus/gui_menus` and its subfolders. You no longer need to add a `name` and `file` entry to `config.yml` for each external menu.
+
+The file path relative to `gui_menus` becomes the menu name:
+
+```text
+gui_menus/home.yml              -> home
+gui_menus/admin/tools.yml       -> admin/tools
+```
+
+Use the menu name with `/dm open`, `[openguimenu]`, or `/dm reload`. Existing `gui_menus` entries and menus defined directly in `config.yml` remain supported. An explicit `config.yml` file mapping takes precedence over automatic discovery of the same file.
+
 ## Contribute
 If you would like to contribute towards DeluxeMenus should you take a look at our [Contributing file][contributing] for the ins and outs on how you can do that and what you need to keep in mind.
 
